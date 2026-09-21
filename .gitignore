@@ -11,6 +11,7 @@ videos/frame*.png
 agent_*.json
 test_agent.json
 *.keypair.json
+devnet_deployer.json
 debug_tx.py
 decisive.py
 demo_output.txt
