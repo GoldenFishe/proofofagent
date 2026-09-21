@@ -1,0 +1,13 @@
+[package]
+name = "proofofagent"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "proofofagent"
+
+[dependencies]
+borsh = "0.10.3"
+solana-program = "=2.1.21"
+sha2 = "0.10"
