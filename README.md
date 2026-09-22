@@ -64,7 +64,7 @@ python3 poa.py register --name karl --uri "https://github.com/<you>/proofofagent
 
 # 4. log real work (any artifact: string or @/path/to/file)
 python3 poa.py log --data "shipped ProofOfAgent v0.1" --amount 0
-python3 poa.py log --data @target/deploy/proofofagent.so
+python3 poa.py log --data @target/deploy/proofofagent.so --amount 0
 python3 poa.py log --data "earned 10 USDC on a superteam bounty" --amount 10000000000
 
 # 5. verify — the fun part
@@ -77,6 +77,37 @@ python3 poa.py chain
 The `root hash` is the agent's *credential*: publish it, anyone can fetch the
 chain and check it end-to-end. It's also a liveness proof — more entries means
 the agent has demonstrably been alive and working longer.
+
+## Reproducible proof (run it yourself)
+
+The demo in `videos/` is a **real, unedited terminal recording** of this exact
+pipeline. Reproduce it in <90s on any machine with the Solana toolchain:
+
+```bash
+# any Solana cluster — a local validator needs no keys and no rate limits
+solana-test-validator &          # (or point at devnet/mainnet)
+solana config set --url localhost
+
+# one command does everything: deploy -> new agent -> airdrop -> register
+# -> log x3 -> status -> chain verify
+bash e2e.sh
+```
+
+Then prove the chain from the chain alone, with no CLI state and no trust in the
+writer:
+
+```bash
+python3 verify_independent.py
+# INDEPENDENT VERIFY: 3 entries, chain intact
+# ARTIFACT LINK PROVEN: on-chain data_hash(seq=1) == sha256(target/deploy/proofofagent.so)
+```
+
+The terminal recording was produced by `record_live.py`, which runs `e2e.sh`
+under a PTY, renders the screen with `pyte`, and encodes the frames — no
+editing. The demo runs against a **local `solana-test-validator`** (no rate
+limits, no devnet faucet needed); the same program deploys unchanged to
+**devnet/mainnet**, where each entry becomes a permanent, solscan-verifiable
+transaction.
 
 ## Repo layout
 
