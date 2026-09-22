@@ -18,13 +18,16 @@ AGENT=$(solana-keygen pubkey $AGENT_KP | grep -oE "[1-9A-HJ-NP-Za-km-z]{32,45}")
 echo "AGENT=$AGENT"
 
 echo "== airdrop agent =="
-SIG=$(curl -s -X POST http://localhost:8899 -H 'Content-Type: application/json' \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"requestAirdrop\",\"params\":[\"$AGENT\", 5000000000]}" \
-  | python3 -c "import json,sys; print(json.load(sys.stdin).get('result',''))")
-sleep 6
-BAL=$(curl -s -X POST http://localhost:8899 -H 'Content-Type: application/json' \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getBalance\",\"params\":[\"$AGENT\"]}" \
-  | python3 -c "import json,sys; print(json.load(sys.stdin)['result']['value']/1e9)")
+curl -s -X POST http://localhost:8899 -H 'Content-Type: application/json' \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"requestAirdrop\",\"params\":[\"$AGENT\", 5000000000]}" >/dev/null
+BAL=0
+for i in $(seq 1 30); do
+  BAL=$(curl -s -X POST http://localhost:8899 -H 'Content-Type: application/json' \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getBalance\",\"params\":[\"$AGENT\"]}" \
+    | python3 -c "import json,sys; print(round(json.load(sys.stdin)['result']['value']/1e9,3))")
+  [ "$BAL" != "0.0" ] && [ "$BAL" != "0" ] && break
+  sleep 1
+done
 echo "agent balance: $BAL SOL"
 
 echo "== configure CLI =="

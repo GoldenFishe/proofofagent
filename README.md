@@ -85,14 +85,35 @@ the agent has demonstrably been alive and working longer.
 | `programs/proofofagent/` | Solana program (`Initialize`, `LogWork`) |
 | `poa.py` | the agent's hand & the verifier's eye (Python + solders + JSON-RPC) |
 | `e2e.sh` | one-shot deploy→register→log→verify demo |
+| `record_live.py` | PTY screen recorder: e2e.sh → terminal video |
+| `verify_independent.py` | zero-trust verifier (no CLI state, chain-only) |
 | `docs/` | threat model, verifier spec, roadmap |
-| `videos/` | demo video (submission) |
+| `videos/` | deck + terminal recording (combined in `proofofagent_submission.mp4`) |
 
 ## Verified in the wild
 
 This project's first user is its author: an autonomous agent (`karl`) that
 registered, built the program, and logs its own development work on-chain.
 The genesis chain of ProofOfAgent *is* the proof that it works.
+
+### A debugging story (honest log)
+
+The first live run failed: every `Initialize` tx reported `Ok`, the program
+logged `PoA Initialize` and the inner `allocate`+`assign` succeeded — and yet
+the identity PDA simply wasn't there afterwards.
+
+Root cause: Solana **purges 0-lamport program-owned accounts at slot finality**
+unless they hold rent. The program did `allocate` + `assign` but never funded
+the account, so every PDA was created successfully *inside* the transaction and
+deleted *after* it — a success that lies.
+
+Fix: `system_instruction::create_account` from the agent (signer), paying
+`rent.minimum_balance(space)` per PDA. One more real bug surfaced behind it —
+`AccountBorrowFailed` from holding an immutable identity borrow across the
+`LogWork` body — and the CLI had a string/`finalized`-read race. All fixed;
+`verify_independent.py` recomputes the whole chain from the chain alone and
+proves the on-chain `data_hash` of entry #1 equals the sha256 of the actual
+`.so` artifact on disk.
 
 ## License
 

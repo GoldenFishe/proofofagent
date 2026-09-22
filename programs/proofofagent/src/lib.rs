@@ -176,16 +176,24 @@ fn handler(program_id: &Pubkey, accounts: &[AccountInfo], data: &[u8]) -> Progra
                 return Err(ProgramError::InvalidAccountData);
             }
 
-            let _rent = Rent::get()?;
+            let rent = Rent::get()?;
             if identity.data_is_empty() {
+                // Fund the identity PDA with rent-exempt lamports from the agent
+                // so it survives slot-end purging (a 0-lamport program account
+                // is deleted when the slot finalizes).
+                let lamports = rent.minimum_balance(state::IDENTITY_SPACE);
+                if agent.lamports() < lamports {
+                    return Err(ProgramError::InsufficientFunds);
+                }
                 invoke_signed(
-                    &system_instruction::allocate(&identity.key, state::IDENTITY_SPACE as u64),
-                    &[identity.clone()],
-                    &[&[state::AGENT_SEED, agent.key.as_ref(), &[bump]]],
-                )?;
-                invoke_signed(
-                    &system_instruction::assign(&identity.key, program_id),
-                    &[identity.clone()],
+                    &system_instruction::create_account(
+                        agent.key,
+                        identity.key,
+                        lamports,
+                        state::IDENTITY_SPACE as u64,
+                        program_id,
+                    ),
+                    &[agent.clone(), identity.clone()],
                     &[&[state::AGENT_SEED, agent.key.as_ref(), &[bump]]],
                 )?;
             } else if identity.owner != program_id {
@@ -227,20 +235,23 @@ fn handler(program_id: &Pubkey, accounts: &[AccountInfo], data: &[u8]) -> Progra
                 return Err(ProgramError::InvalidAccountData);
             }
 
-            let id = identity.try_borrow_data()?;
-            if id.len() != state::IDENTITY_SPACE {
-                return Err(ProgramError::AccountDataTooSmall);
-            }
-            if id[state::OFF_AGENT..state::OFF_AGENT + 32] != *agent.key.as_ref() {
-                return Err(ProgramError::InvalidAccountData);
-            }
-            let work_count = u64::from_le_bytes(
-                id[state::OFF_WORK_COUNT..state::OFF_WORK_COUNT + 8].try_into().unwrap(),
-            );
-            if seq != work_count {
-                msg!("expected seq={work_count} got {seq}");
-                return Err(ProgramError::InvalidInstructionData);
-            }
+            let work_count = {
+                let id = identity.try_borrow_data()?;
+                if id.len() != state::IDENTITY_SPACE {
+                    return Err(ProgramError::AccountDataTooSmall);
+                }
+                if id[state::OFF_AGENT..state::OFF_AGENT + 32] != *agent.key.as_ref() {
+                    return Err(ProgramError::InvalidAccountData);
+                }
+                let wc = u64::from_le_bytes(
+                    id[state::OFF_WORK_COUNT..state::OFF_WORK_COUNT + 8].try_into().unwrap(),
+                );
+                if seq != wc {
+                    msg!("expected seq={wc} got {seq}");
+                    return Err(ProgramError::InvalidInstructionData);
+                }
+                wc
+            }; // immutable borrow of identity dropped here
 
             let mut prev = [0u8; 32];
             if seq > 0 {
@@ -258,14 +269,20 @@ fn handler(program_id: &Pubkey, accounts: &[AccountInfo], data: &[u8]) -> Progra
 
             if work.data_is_empty() {
                 let seq_bytes = seq.to_le_bytes();
+                let rent = Rent::get()?;
+                let lamports = rent.minimum_balance(state::WORK_SPACE);
+                if agent.lamports() < lamports {
+                    return Err(ProgramError::InsufficientFunds);
+                }
                 invoke_signed(
-                    &system_instruction::allocate(&work.key, state::WORK_SPACE as u64),
-                    &[work.clone()],
-                    &[&[state::WORK_SEED, agent.key.as_ref(), &seq_bytes, &[bump_work]]],
-                )?;
-                invoke_signed(
-                    &system_instruction::assign(&work.key, program_id),
-                    &[work.clone()],
+                    &system_instruction::create_account(
+                        agent.key,
+                        work.key,
+                        lamports,
+                        state::WORK_SPACE as u64,
+                        program_id,
+                    ),
+                    &[agent.clone(), work.clone()],
                     &[&[state::WORK_SEED, agent.key.as_ref(), &seq_bytes, &[bump_work]]],
                 )?;
             } else if work.owner != program_id {

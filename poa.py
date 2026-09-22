@@ -14,6 +14,35 @@ Zero-trust verification: everything a verifier needs is on-chain.
 """
 import sys, json, os, time, base64, struct, hashlib, urllib.request
 
+try:
+    import base58
+except ImportError:  # minimal local fallback (chain root + keypair format only)
+    _B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    class _Base58:
+        @staticmethod
+        def b58encode(b: bytes) -> bytes:
+            n = int.from_bytes(b, "big")
+            s = b""
+            while n > 0:
+                n, r = divmod(n, 58)
+                s = _B58_ALPHABET.encode()[r:r+1] + s
+            for byte in b:
+                if byte == 0:
+                    s = b"1" + s
+                else:
+                    break
+            return s
+        @staticmethod
+        def b58decode(s) -> bytes:
+            n = 0
+            for c in s if isinstance(s, str) else s.decode():
+                n = n * 58 + _B58_ALPHABET.index(c)
+            out = n.to_bytes((n.bit_length() + 7) // 8, "big")
+            stripped = s if isinstance(s, str) else s.decode()
+            out = b"\x00" * len(stripped.lstrip("1")) + out
+            return out
+    base58 = _Base58()
+
 CFG_PATH = "/karl/proofofagent/poa_config.json"
 
 # ---- on-chain layout (mirrors the Rust program) ----
@@ -64,12 +93,26 @@ def rpc(cfg, method, params):
         raise RuntimeError(f"rpc {method}: {out['error']}")
     return out["result"]
 
-def get_data(cfg, pk):
-    r = rpc(cfg, "getAccountInfo", [str(pk), {"encoding":"base64"}])
+def get_data(cfg, pk, commitment="finalized"):
+    r = rpc(cfg, "getAccountInfo", [str(pk), {"encoding": "base64", "commitment": commitment}])
     v = r.get("value")
     if not v:
         return None
     return base64.b64decode(v["data"][0])
+
+def tx_link(cfg, sig):
+    if "localhost" in cfg.get("rpc", "") or "127.0.0.1" in cfg.get("rpc", ""):
+        return f"sig {sig[:32]}…"
+    return f"tx https://solscan.io/tx/{sig}"
+
+def wait_finalized(cfg, pk, timeout=30):
+    """Block until pk exists at finalized commitment (avoid stale seq reads)."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if get_data(cfg, pk, "finalized") is not None:
+            return
+        time.sleep(1)
+    raise RuntimeError(f"{pk} not finalized within {timeout}s")
 
 def agent_pda(agent: Pubkey, program: Pubkey):
     return Pubkey.find_program_address([AGENT_SEED, bytes(agent)], program)[0]
@@ -87,12 +130,12 @@ def send_tx(cfg, payer, ix, blockhash):
     while time.time() < deadline:
         s = rpc(cfg, "getSignatureStatuses", [[str(sig)]])
         st = s["value"][0]
-        if st and st.get("confirmationStatus") in ("confirmed","finalized"):
+        if st and st.get("confirmationStatus") == "finalized":
             if st.get("err"):
                 raise RuntimeError(f"tx failed on-chain: {st['err']}")
             return sig
         time.sleep(1.5)
-    raise RuntimeError(f"tx {sig} not confirmed in 60s")
+    raise RuntimeError(f"tx {sig} not finalized in 60s")
 
 def latest_blockhash(cfg):
     r = rpc(cfg, "getLatestBlockhash", [{"commitment":"confirmed"}])
@@ -144,7 +187,8 @@ def cmd_register(args, cfg):
         AccountMeta(SYSTEM, False, False),   # system program
     ])
     sig = send_tx(cfg, kp, ix, latest_blockhash(cfg))
-    print(f"registered  tx https://solscan.io/tx/{sig}")
+    wait_finalized(cfg, id_pda)
+    print(f"registered  {tx_link(cfg, str(sig))}")
     d = get_data(cfg, id_pda)
     if d: print(json.dumps(parse_identity(d), indent=2))
 
@@ -162,9 +206,12 @@ def cmd_log(args, cfg):
     if id_data is None:
         raise SystemExit("no identity — run: register")
     seq = int.from_bytes(id_data[OFF_WORK_COUNT:OFF_WORK_COUNT+8], "little")
+    if seq > 0:
+        # wait until the previous entry is finalized so seq is not stale
+        wait_finalized(cfg, work_pda(agent, seq-1, program))
     w_pda = work_pda(agent, seq, program)
     ts = int(time.time())
-    data = bytes([1]) + struct.pack("<Q", seq) + struct.pack("<Q", ts) + data_hash + struct.pack("<Q", args["amount"])
+    data = bytes([1]) + struct.pack("<Q", seq) + struct.pack("<Q", ts) + data_hash + struct.pack("<Q", int(args["amount"]))
     metas = [
         AccountMeta(agent, True, True),
         AccountMeta(id_pda, False, True),   # program bumps work_count -> writable
@@ -176,7 +223,7 @@ def cmd_log(args, cfg):
         metas.append(AccountMeta(work_pda(agent, seq-1, program), False, False))
     ix = Instruction(program, data, metas)
     sig = send_tx(cfg, kp, ix, latest_blockhash(cfg))
-    print(f"logged seq={seq}  tx https://solscan.io/tx/{sig}")
+    print(f"logged seq={seq}  {tx_link(cfg, str(sig))}")
 
 def cmd_status(cfg):
     kp = load_wallet(cfg["wallet"])
@@ -221,7 +268,6 @@ def cmd_chain(cfg):
         prev = exp
     print(f"CHAIN VERIFIED: {count} entries")
     print(f"root hash: 0x{prev.hex()}")
-    import base58
     print(f"root bs58: {base58.b58encode(prev).decode()}")
 
 def main():
