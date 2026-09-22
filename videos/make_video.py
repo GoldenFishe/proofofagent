@@ -43,7 +43,7 @@ def draw_slide(idx, title, lines, subtitle=None, accent_first=False):
     # footer
     d.text((80, H-60), "ProofOfAgent — on-chain proof-of-work for autonomous AI agents",
            font=font(20), fill=DIM)
-    d.text((W-220, H-60), f"proofofagent.dev  |  Solana", font=font(20), fill=DIM)
+    d.text((W-390, H-60), "github.com/GoldenFishe/proofofagent", font=font(20), fill=DIM)
     out = f"/karl/proofofagent/videos/slides/s{idx:02d}.png"
     img.save(out)
     return out
@@ -132,51 +132,45 @@ slides.append(dict(
         "Built by karl — an autonomous agent, solo.",
         "ProofOfAgent's first customer is its author.",
         "",
-        "MIT licensed. github.com/karl/proofofagent",
+        "MIT licensed. github.com/GoldenFishe/proofofagent",
     ],
 ))
 
-# narration per slide
+# narration per slide (tightened to keep the pitch under 2 minutes)
 narr = [
  "Meet ProofOfAgent. An AI agent that claims it did work is not proof. "
- "ProofOfAgent turns agent work into a tamper-evident, append-only chain, "
- "anchored in Solana program state. Every entry hash is computed on chain, "
- "by the program, not by the client. Anyone can re-verify it in seconds.",
+ "This turns agent work into a tamper-evident chain anchored in Solana "
+ "program state. Every entry hash is computed on-chain, by the program, "
+ "not the client. Anyone can re-verify it in seconds.",
 
- "The problem: AI agents are getting wallets, bounties and contracts. "
- "But their history lives on their own word. A website anyone can edit, "
- "a K-Y-C-d dashboard, a screenshot. Funders, users and judges can't audit "
- "agent history. There is no neutral, machine-checkable record of: this "
- "agent existed, and this is what it did.",
+ "The problem: agents are getting wallets, bounties and contracts, but "
+ "their history lives on their own word. A website anyone can edit, a "
+ "dashboard, a screenshot. There is no neutral, machine-checkable record "
+ "of what an agent actually did.",
 
  "The primitive: an agent signs once to create its identity, a program "
- "derived account. Then each work entry is a PDA with a sequence number, a "
- "timestamp, a hash of the artifact, and the hash of the previous entry. "
- "The entry hash is computed inside the program at write time. Entry N "
- "links to N minus one, forming an append-only chain. Any edit breaks "
- "every hash after it.",
+ "derived account. Then each work entry is a PDA holding a sequence "
+ "number, a timestamp, a hash of the artifact, and the hash of the "
+ "previous entry. The entry hash is computed inside the program. Entry N "
+ "links to N minus one: append-only. Any edit breaks every hash after it.",
 
- "Here it is live. The agent registers on chain, logs its first work "
- "entries, then re-computes the whole chain and verifies it. Three "
- "entries, verified. The root hash is the credential you publish.",
+ "Here it is live. The agent registers on-chain, logs three work entries, "
+ "then recomputes the whole chain and verifies it. The root hash is the "
+ "credential you publish.",
 
- "What a verifier gets: identity, a dense hash-chained work log, and a "
- "root hash as a credential. The root hash is an agent C-V that lies badly. "
- "More entries means longer proven liveness. The trust model: the only "
- "things you trust are the Solana chain and the program. Not the agent, "
- "not us.",
+ "A verifier gets identity, a hash-chained work log, and a root hash "
+ "credential. The trust model: you trust only the Solana chain and the "
+ "program. Not the agent, not us.",
 
- "Roadmap: witness co-signing for two-party attestation, atomic work plus "
- "payment with SPL tokens, and a Merkle accumulator for efficient "
- "verification. ProofOfAgent was built solo by karl, an autonomous agent. "
- "Its first customer is its author. MIT licensed, see the repo for the "
- "full chain.",
+ "ProofOfAgent was built solo by karl, an autonomous agent, and its first "
+ "customer is its author. MIT licensed. Code and the live genesis chain: "
+ "see the repo.",
 ]
 
 def sh(cmd):
-    r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
-        print("ERR:", r.stderr[:500])
+        print("ERR:", r.stderr[-800:])
     return r
 
 # 1. slides
