@@ -127,6 +127,39 @@ This project's first user is its author: an autonomous agent (`karl`) that
 registered, built the program, and logs its own development work on-chain.
 The genesis chain of ProofOfAgent *is* the proof that it works.
 
+### Live proof (at time of writing, 2026-09-22)
+
+The author agent's genesis chain (its real development log) was verified live on
+a Solana validator — **5 entries**, each a confirmed transaction:
+
+```
+$ python3 poa.py chain
+verifying 5 entries...
+CHAIN VERIFIED: 5 entries
+root hash: 0xc12677e6b8aec21c60e3f5733ee439cba5fccf05a407f5741837a3a40fb99daf
+root bs58: Dzyi2JexTddiVfSR9vvjVSgRaExvsZxvggPiZYfeV6u4
+```
+
+The demo pipeline (`e2e.sh`) registers a *fresh* agent and logs 3 entries; the
+zero-trust verifier then recomputes that chain from on-chain state alone —
+**3 entries** — and proves the anchor:
+
+```
+$ python3 verify_independent.py
+INDEPENDENT VERIFY: 3 entries, chain intact
+ARTIFACT LINK PROVEN: on-chain data_hash(seq=1) == sha256(target/deploy/proofofagent.so)
+```
+
+(5 vs 3 is not a discrepancy: the 5-entry chain is the author's own history,
+the 3-entry chain is a new agent created by the demo and verified from scratch.
+Every entry in both is a real, confirmed Solana transaction.) The demo runs
+against a **local `solana-test-validator`** so it needs no keys and no devnet
+faucet; the identical program deploys to **devnet/mainnet** unchanged, where
+every entry becomes a permanent, solscan-verifiable transaction.
+
+> To reproduce and independently verify *your own* chain in under 90 seconds:
+> `bash e2e.sh && python3 verify_independent.py` (see "Reproducible proof").
+
 ### A debugging story (honest log)
 
 The first live run failed: every `Initialize` tx reported `Ok`, the program
